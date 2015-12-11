@@ -1,0 +1,111 @@
+#!/usr/bin/env python
+
+from __future__ import print_function
+
+import subprocess
+
+from collections import defaultdict
+
+import prettytable
+import sys
+
+
+class Stats(object):
+    def __init__(self, commits=0, updates=0, insertions=0, deletions=0):
+        self.commits = commits
+        self.updates = updates
+        self.insertions = insertions
+        self.deletions = deletions
+
+    def update(self, stats):
+        self.commits += 1
+        for stat in stats.split(', '):
+            try:
+                value = int(stat.strip().split(' ')[0])
+            except ValueError as e:
+                print("\n".join(stats) + "\n  ERROR: " + e)
+
+            if stat.endswith('(+)'):
+                self.insertions += value
+            elif stat.endswith('(-)'):
+                self.deletions += value
+            else:
+                self.updates += value
+
+    @property
+    def delta(self):
+        return self.insertions - self.deletions
+
+    def __add__(self, other):
+        return Stats(
+                commits=self.commits + other.commits,
+                updates=self.updates + other.updates,
+                insertions=self.insertions + other.insertions,
+                deletions=self.deletions + other.deletions
+        )
+
+    def __str__(self):
+        return "{} commits, {} updates, {} inserts, {} deletions, {} lines".format(self.commits, self.updates,
+                                                                                   self.insertions,
+                                                                                   self.deletions,
+                                                                                   self.delta)
+
+
+def determine_user_mapping():
+    global user_map
+    user_map = {}
+    for arg in args:
+        split = arg.split(':')
+        if len(split) == 2:
+            user_map[split[0]] = split[1]
+    return user_map
+
+
+def collect_stats_per_user():
+    stats_per_user = defaultdict(Stats)
+    user = "<unknown>"
+    for line in output.splitlines():
+        if line.strip() == "":
+            continue
+
+        if line[0] != ' ':
+            user = line.split(' ')[1].lower()
+            if user in user_map:
+                user = user_map[user]
+        else:
+            stats_per_user[user].update(line)
+
+    return stats_per_user
+
+
+def render_table():
+    global_stats = Stats()
+
+    columns = ["User", "Commits", "Updates", "Insertions", "Deletions", "Delta"]
+    table = prettytable.PrettyTable(columns)
+    table.align[columns[0]] = "l"
+    for column in columns[1:]:
+        table.align[column] = "r"
+
+    for user, stats in sorted_stats:
+        table.add_row([user, stats.commits, stats.updates, stats.insertions, stats.deletions, stats.delta])
+        global_stats += stats
+
+    table.add_row(["TOTAL", global_stats.commits, global_stats.updates, global_stats.insertions, global_stats.deletions,
+                   global_stats.delta])
+
+    return str(table)
+
+
+if __name__ == '__main__':
+    output = subprocess.check_output(["git", "log", "--format=%h %ae", "--shortstat", "--no-merges", "-C"])
+
+    args = sys.argv[1:]
+
+    user_map = determine_user_mapping()
+
+    stats_per_user = collect_stats_per_user()
+
+    sorted_stats = sorted(stats_per_user.items(), key=lambda item: item[1].commits, reverse=True)
+
+    print(render_table())
