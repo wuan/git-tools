@@ -2,6 +2,15 @@
 
 ## `git-stats`
 
+### Usage
+
+```
+> git-stats <user-mapping> ...
+```
+
+where `<user-mapping>` is in the format `user:mapped_user` 
+
+### Example
 Create per user statistics like:
 
 ```
