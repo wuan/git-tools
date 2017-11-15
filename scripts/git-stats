@@ -77,11 +77,11 @@ def collect_stats_per_user(user_map):
 
 
 def render_table(stats, options):
+    import prettytable
+
     global_stats = Stats()
 
-    columns = ["User", "Commits", "Updates", "Insertions", "Deletions", "Delta"]
-    if 'project_name' in options:
-        columns = ["Project"] + columns
+    columns = get_title(options)
     table = prettytable.PrettyTable(columns)
     table.align[columns[0]] = "l"
     for column in columns[1:]:
@@ -99,6 +99,13 @@ def render_table(stats, options):
                    global_stats.delta])
 
     return str(table)
+
+
+def get_title(options):
+    columns = ["User", "Commits", "Updates", "Insertions", "Deletions", "Delta"]
+    if options.project_name:
+        columns = ["Project"] + columns
+    return columns
 
 
 if __name__ == '__main__':
@@ -132,4 +139,4 @@ if __name__ == '__main__':
                 row = [user, stats.commits, stats.updates, stats.insertions, stats.deletions, stats.delta]
                 if options.project_name:
                     row = [options.project_name] + row
-                print(", ".join([str(value) for value in row]))
+                print(";".join([str(value) for value in row]))
