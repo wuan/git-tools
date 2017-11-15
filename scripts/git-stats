@@ -2,12 +2,10 @@
 
 from __future__ import print_function
 
+import argparse
 import subprocess
-
-from collections import defaultdict
-
-import prettytable
 import sys
+from collections import defaultdict
 
 
 class Stats(object):
@@ -38,10 +36,10 @@ class Stats(object):
 
     def __add__(self, other):
         return Stats(
-                commits=self.commits + other.commits,
-                updates=self.updates + other.updates,
-                insertions=self.insertions + other.insertions,
-                deletions=self.deletions + other.deletions
+            commits=self.commits + other.commits,
+            updates=self.updates + other.updates,
+            insertions=self.insertions + other.insertions,
+            deletions=self.deletions + other.deletions
         )
 
     def __str__(self):
@@ -51,20 +49,20 @@ class Stats(object):
                                                                                    self.delta)
 
 
-def determine_user_mapping():
-    global user_map
+def determine_user_mapping(user_mapping):
     user_map = {}
-    for arg in args:
+    for arg in user_mapping:
         split = arg.split(':')
         if len(split) == 2:
             user_map[split[0]] = split[1]
     return user_map
 
 
-def collect_stats_per_user():
+def collect_stats_per_user(user_map):
     stats_per_user = defaultdict(Stats)
     user = "<unknown>"
-    for line in output.splitlines():
+    for binary_line in output.splitlines():
+        line = binary_line.decode('utf-8')
         if line.strip() == "":
             continue
 
@@ -78,18 +76,24 @@ def collect_stats_per_user():
     return stats_per_user
 
 
-def render_table():
+def render_table(stats, options):
     global_stats = Stats()
 
     columns = ["User", "Commits", "Updates", "Insertions", "Deletions", "Delta"]
+    if 'project_name' in options:
+        columns = ["Project"] + columns
     table = prettytable.PrettyTable(columns)
     table.align[columns[0]] = "l"
     for column in columns[1:]:
         table.align[column] = "r"
 
-    for user, stats in sorted_stats:
-        table.add_row([user, stats.commits, stats.updates, stats.insertions, stats.deletions, stats.delta])
-        global_stats += stats
+    for user, user_stats in stats:
+        row = [user, user_stats.commits, user_stats.updates, user_stats.insertions, user_stats.deletions,
+               user_stats.delta]
+        if options.project_name:
+            row = [options.project_name] + row
+        table.add_row(row)
+        global_stats += user_stats
 
     table.add_row(["TOTAL", global_stats.commits, global_stats.updates, global_stats.insertions, global_stats.deletions,
                    global_stats.delta])
@@ -98,14 +102,34 @@ def render_table():
 
 
 if __name__ == '__main__':
-    output = subprocess.check_output(["git", "log", "--format=%h %ae", "--shortstat", "--no-merges", "-C"])
+    parser = argparse.ArgumentParser(description='Create user statistics for git projects')
+    parser.add_argument('user_mapping', nargs='*')
+    parser.add_argument('-p', '--project_name', type=str,
+                        help='optional project name')
+    parser.add_argument('-f', '--filter', type=str, nargs='*', dest='filter_users', help='filter by user name')
+    parser.add_argument('--pretty', dest='pretty_output', action='store_true',
+                        help='pretty printed instead of CSV output')
 
-    args = sys.argv[1:]
+    options = parser.parse_args()
 
-    user_map = determine_user_mapping()
+    try:
+        output = subprocess.check_output(["git", "log", "--format=%h %ae", "--shortstat", "--no-merges", "-C"])
+    except:
+        sys.exit(0)
 
-    stats_per_user = collect_stats_per_user()
+    user_map = determine_user_mapping(options.user_mapping)
+
+    stats_per_user = collect_stats_per_user(user_map)
 
     sorted_stats = sorted(stats_per_user.items(), key=lambda item: item[1].commits, reverse=True)
 
-    print(render_table())
+    filter_users = set(options.filter_users) if options.filter_users else None
+    if options.pretty_output:
+        print(render_table(sorted_stats, options))
+    else:
+        for user, stats in sorted_stats:
+            if filter_users is None or user in filter_users:
+                row = [user, stats.commits, stats.updates, stats.insertions, stats.deletions, stats.delta]
+                if options.project_name:
+                    row = [options.project_name] + row
+                print(", ".join([str(value) for value in row]))
