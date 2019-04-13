@@ -116,11 +116,16 @@ if __name__ == '__main__':
     parser.add_argument('-f', '--filter', type=str, nargs='*', dest='filter_users', help='filter by user name')
     parser.add_argument('--pretty', dest='pretty_output', action='store_true',
                         help='pretty printed instead of CSV output')
+    parser.add_argument('-s','--since', dest='since', type=str, default=None)
 
     options = parser.parse_args()
 
     try:
-        output = subprocess.check_output(["git", "log", "--format=%h %ae", "--shortstat", "--no-merges", "-C"])
+        git_log_args = ["git", "log", "--format=%h %ae"]
+        if options.since is not None:
+            git_log_args += ['--since=' + options.since]
+        git_log_args += ["--shortstat", "--no-merges", "-C"]
+        output = subprocess.check_output(git_log_args)
     except:
         sys.exit(0)
 
