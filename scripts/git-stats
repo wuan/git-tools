@@ -58,7 +58,7 @@ def determine_user_mapping(user_mapping):
     return user_map
 
 
-def collect_stats_per_user(user_map):
+def collect_stats_per_user(output, user_map):
     stats_per_user = defaultdict(Stats)
     user = "<unknown>"
     for binary_line in output.splitlines():
@@ -131,7 +131,7 @@ if __name__ == '__main__':
 
     user_map = determine_user_mapping(options.user_mapping)
 
-    stats_per_user = collect_stats_per_user(user_map)
+    stats_per_user = collect_stats_per_user(output, user_map)
 
     sorted_stats = sorted(stats_per_user.items(), key=lambda item: item[1].commits, reverse=True)
 
