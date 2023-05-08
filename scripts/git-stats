@@ -3,9 +3,13 @@
 from __future__ import print_function
 
 import argparse
+import datetime
 import subprocess
 import sys
 from collections import defaultdict
+from typing import Optional
+
+from dateutil.relativedelta import relativedelta
 
 
 class Stats(object):
@@ -58,22 +62,48 @@ def determine_user_mapping(user_mapping):
     return user_map
 
 
-def collect_stats_per_user(output, user_map):
+def collect_stats_per_user(output, user_map, date_filter_string: str):
     stats_per_user = defaultdict(Stats)
     user = "<unknown>"
+    take = False
     for binary_line in output.splitlines():
         line = binary_line.decode('utf-8')
         if line.strip() == "":
             continue
 
         if line[0] != ' ':
-            user = line.split(' ')[1].lower()
+            parts = line.split(' ')
+            user = parts[1].lower()
             if user in user_map:
                 user = user_map[user]
+            date = datetime.date.fromisoformat(parts[2])
+            take = date_filter(date, date_filter_string)
         else:
-            stats_per_user[user].update(line)
+            if take:
+                stats_per_user[user].update(line)
 
     return stats_per_user
+
+
+def date_filter(date, date_filter_string: Optional[str]):
+    if date_filter_string is None:
+        return True
+
+    parts = date_filter_string.split("-")
+
+    if len(parts) == 1:
+        filter_start = datetime.date(int(parts[0]), 1, 1)
+        filter_end = filter_start + relativedelta(years=1)
+    elif len(parts) == 2:
+        filter_start = datetime.date(int(parts[0]), int(parts[1]), 1)
+        filter_end = filter_start + relativedelta(months=1)
+    elif len(parts) == 3:
+        filter_start = datetime.date(int(parts[0]), int(parts[1]), int(parts[2]))
+        filter_end = filter_start + relativedelta(days=1)
+    else:
+        return True
+
+    return filter_start <= date < filter_end
 
 
 def render_table(stats, options):
@@ -114,14 +144,16 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--project_name', type=str,
                         help='optional project name')
     parser.add_argument('-f', '--filter', type=str, nargs='*', dest='filter_users', help='filter by user name')
+    parser.add_argument('--date-filter', type=str, dest='date_filter',
+                        help='filter by year(Y), month(Y-m) or date(Y-m-d)', default=None)
     parser.add_argument('--pretty', dest='pretty_output', action='store_true',
                         help='pretty printed instead of CSV output')
-    parser.add_argument('-s','--since', dest='since', type=str, default=None)
+    parser.add_argument('-s', '--since', dest='since', type=str, default=None)
 
     options = parser.parse_args()
 
     try:
-        git_log_args = ["git", "log", "--format=%h %ae"]
+        git_log_args = ["git", "log", "--format=%h %ae %ad", "--date=short"]
         if options.since is not None:
             git_log_args += ['--since=' + options.since]
         git_log_args += ["--shortstat", "--no-merges", "-C"]
@@ -131,7 +163,7 @@ if __name__ == '__main__':
 
     user_map = determine_user_mapping(options.user_mapping)
 
-    stats_per_user = collect_stats_per_user(output, user_map)
+    stats_per_user = collect_stats_per_user(output, user_map, options.date_filter)
 
     sorted_stats = sorted(stats_per_user.items(), key=lambda item: item[1].commits, reverse=True)
 
